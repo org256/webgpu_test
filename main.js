@@ -1,4 +1,4 @@
-import { mat4, Mat4, vec3 } from 'wgpu-matrix';
+import { mat4, vec3 } from 'https://wgpu-matrix.org/dist/3.x/wgpu-matrix.module.js';
 
 import {
   cubeVertexArray,
@@ -6,16 +6,48 @@ import {
   cubeUVOffset,
   cubePositionOffset,
   cubeVertexCount,
-} from '../../meshes/cube';
+} from './cube.js';
 
-import instancedVertWGSL from './instanced.vert.wgsl';
-import vertexPositionColorWGSL from '../../shaders/vertexPositionColor.frag.wgsl';
+const instancedVertWGSL = `struct Uniforms {
+  modelViewProjectionMatrix : array<mat4x4f, 16>,
+}
 
-const canvas = document.querySelector('canvas') as HTMLCanvasElement;
+@binding(0) @group(0) var<uniform> uniforms : Uniforms;
+
+struct VertexOutput {
+  @builtin(position) Position : vec4f,
+  @location(0) fragUV : vec2f,
+  @location(1) fragPosition: vec4f,
+}
+
+@vertex
+fn main(
+  @builtin(instance_index) instanceIdx : u32,
+  @location(0) position : vec4f,
+  @location(1) uv : vec2f
+) -> VertexOutput {
+  var output : VertexOutput;
+  output.Position = uniforms.modelViewProjectionMatrix[instanceIdx] * position;
+  output.fragUV = uv;
+  output.fragPosition = 0.5 * (position + vec4(1.0));
+  return output;
+}
+`;
+
+const vertexPositionColorWGSL = `@fragment
+fn main(
+  @location(0) fragUV: vec2f,
+  @location(1) fragPosition: vec4f
+) -> @location(0) vec4f {
+  return fragPosition;
+}
+`;
+
+const canvas = document.querySelector('canvas');
 const adapter = await navigator.gpu.requestAdapter();
 const device = await adapter.requestDevice();
 
-const context = canvas.getContext('webgpu') as GPUCanvasContext;
+const context = canvas.getContext('webgpu');
 
 const devicePixelRatio = window.devicePixelRatio;
 canvas.width = canvas.clientWidth * devicePixelRatio;
@@ -126,7 +158,7 @@ const uniformBindGroup = device.createBindGroup({
 const aspect = canvas.width / canvas.height;
 const projectionMatrix = mat4.perspective((2 * Math.PI) / 5, aspect, 1, 100.0);
 
-const modelMatrices = new Array<Mat4>(numInstances);
+const modelMatrices = new Array(numInstances);
 const mvpMatricesData = new Float32Array(matrixFloatCount * numInstances);
 
 const step = 4.0;
@@ -180,7 +212,7 @@ function updateTransformationMatrix() {
   }
 }
 
-const renderPassDescriptor: GPURenderPassDescriptor = {
+const renderPassDescriptor = {
   colorAttachments: [
     {
       view: undefined, // Assigned later
